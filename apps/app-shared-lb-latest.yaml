@@ -12,6 +12,37 @@ Description: Platform App on Shared Load Balancer
 
 Parameters:
 
+  # User Parameters - Dynamically generated from the API
+  DesiredCount:
+    Description: How many instances of this task should we run across our cluster?
+    Type: Number
+    Default: 1
+
+  Priority:
+    Description: The Application Load Balancer rule priority
+    Type: Number
+    Default: 1
+
+  HealthCheckPath:
+    Description: The health check path to register with the Application Load Balancer
+    Type: String
+    Default: /
+
+  DockerImage:
+    Description: Docker image to start the container with
+    Type: String
+
+  ServiceDiscoveryTTL:
+    Type: String
+    Description: The amount of time, in seconds, that you want DNS resolvers to cache the settings for this record.
+    Default: '60'
+
+  # Platform Parameters - Resolved from SSM.
+  PlatformDomainName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Name of the Hosted Zone to register service with
+    Default: /gureume/platform/domain-name
+
   PlatformVPC:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform VPC
@@ -37,6 +68,11 @@ Parameters:
     Description: Platform Load Balancer Hosted Zone ID
     Default: /gureume/platform/loadbalancer/hosted-zone-id
 
+  PlatformLoadBalancerListener:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: The Application Load Balancer listener to register with
+    Default: /gureume/platform/loadbalancer/listener-arn
+
   PlatformLoadBalancerSecurityGroup:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Load Balancer Security Group
@@ -46,42 +82,6 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Namespace ID
     Default: /gureume/platform/service-discovery/namespace-id
-
-  DesiredCount:
-    Description: How many instances of this task should we run across our cluster?
-    Type: Number
-    Default: 1
-
-  Priority:
-    Description: The Application Load Balancer rule priority
-    Type: Number
-    Default: 1
-
-  Listener:
-    Description: The Application Load Balancer listener to register with
-    Type: String
-
-  HealthCheckPath:
-    Description: The health check path to register with the Application Load Balancer
-    Type: String
-    Default: /
-
-  DockerImage:
-    Description: Docker image to start the container with
-    Type: String
-
-  GroupName:
-    Type: String
-    Description: The prefix to be added to resources to manage IAM Role permissions
-
-  PlatformDomainName:
-    Description: Name of the Hosted Zone to register service with
-    Type: String
-
-  ServiceDiscoveryTTL:
-    Type: String
-    Description: The amount of time, in seconds, that you want DNS resolvers to cache the settings for this record.
-    Default: '60'
 
 Resources:
 
@@ -142,14 +142,14 @@ Resources:
   CloudWatchLogsGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub 'app-${GroupName}-${AWS::StackName}'
+      LogGroupName: !Sub 'app-${AWS::StackName}'
       RetentionInDays: 365
 
   ApplicationServiceSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupName: !Sub 'platform-sg-${AWS::StackName}'
-      GroupDescription: !Sub '(${AWS::StackName}) Application Service SG'
+      GroupName: !Sub 'app-sg-${AWS::StackName}'
+      GroupDescription: !Sub '(${AWS::StackName}) Application Service Security Group'
       SecurityGroupIngress:
         - SourceSecurityGroupId: !Ref PlatformLoadBalancerSecurityGroup
           FromPort: 80
@@ -180,7 +180,7 @@ Resources:
   ListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref Listener
+      ListenerArn: !Ref PlatformLoadBalancerListener
       Priority: !Ref Priority
       Conditions:
         - Field: host-header
