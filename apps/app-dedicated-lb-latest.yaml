@@ -12,26 +12,7 @@ Description: Platform Service with Dedicated Load Balancer
 
 Parameters:
 
-  PlatformVPC:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: Platform VPC
-    Default: /gureume/platform/vpc
-
-  PlatformPublicSubnets:
-    Type: AWS::SSM::Parameter::Value<List<String>>
-    Description: Platform Public Subnets
-    Default: /gureume/platform/subnets/public
-
-  PlatformPrivateSubnets:
-    Type: AWS::SSM::Parameter::Value<List<String>>
-    Description: Platform Private Subnets
-    Default: /gureume/platform/subnets/private
-
-  PlatformCluster:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: Platform ECS Cluster
-    Default: /gureume/platform/ecs
-
+  # User Parameters - Dynamically generated from the API
   DesiredCount:
     Description: How many instances of this task should we run across our cluster?
     Type: Number
@@ -45,17 +26,52 @@ Parameters:
   HealthCheckPath:
     Description: The health check path to register with the Application Load Balancer
     Type: String
-    Default: /health
+    Default: /
 
   DockerImage:
     Description: Docker image to start the container with
     Type: String
-    Default: nginx:latest
 
-  HostedZoneName:
-    Description: Name of the Hosted Zone to register service with
+  ServiceDiscoveryTTL:
     Type: String
-    Default: apps.gureu.me
+    Description: The amount of time, in seconds, that you want DNS resolvers to cache the settings for this record.
+    Default: '60'
+
+  # Platform Parameters - Resolved from SSM.
+  PlatformDomainName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Name of the Hosted Zone to register service with
+    Default: /gureume/platform/domain-name
+
+  PlatformCertificateArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform wildcard certificate ARN
+    Default: /gureume/platform/certificate-arn
+
+  PlatformVPC:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform VPC
+    Default: /gureume/platform/vpc
+
+  PlatformPublicSubnets:
+    Type: AWS::SSM::Parameter::Value<List<String>>
+    Description: Platform Private Subnets
+    Default: /gureume/platform/subnets/public
+
+  PlatformPrivateSubnets:
+    Type: AWS::SSM::Parameter::Value<List<String>>
+    Description: Platform Private Subnets
+    Default: /gureume/platform/subnets/private
+
+  PlatformCluster:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform ECS Cluster
+    Default: /gureume/platform/ecs
+
+  PlatformNamespaceId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform Namespace ID
+    Default: /gureume/platform/service-discovery/namespace-id
 
 Resources:
 
@@ -82,6 +98,10 @@ Resources:
           SecurityGroups:
             - !GetAtt ApplicationServiceSecurityGroup.GroupId
           Subnets: !Ref PlatformPrivateSubnets
+      ServiceRegistries:
+        -
+          Port: 80
+          RegistryArn: !GetAtt ServiceDiscoveryService.Arn
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -93,7 +113,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      ExecutionRoleArn: !GetAtt ApplicationContainerRole.Arn
+      TaskRoleArn: !GetAtt ApplicationContainerRole.Arn
+      ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn
       ContainerDefinitions:
         - Name: web
           Essential: true
@@ -104,23 +125,23 @@ Resources:
           LogConfiguration:
             LogDriver: awslogs
             Options:
-                awslogs-group: !Sub 'platform-app-${AWS::StackName}'
+                awslogs-group: !Ref CloudWatchLogsGroup
                 awslogs-region: !Ref AWS::Region
-                awslogs-stream-prefix: !Ref AWS::StackName
+                awslogs-stream-prefix: 'app'
 
   CloudWatchLogsGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub 'platform-app-${AWS::StackName}'
+      LogGroupName: !Sub 'app-${AWS::StackName}'
       RetentionInDays: 365
 
   ApplicationServiceSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupName: !Sub 'platform-sg-${AWS::StackName}'
-      GroupDescription: !Sub '(${AWS::StackName}) Application Service SG'
+      GroupName: !Sub 'app-sg-${AWS::StackName}'
+      GroupDescription: !Sub '(${AWS::StackName}) Application Service Security Group'
       SecurityGroupIngress:
-        - CidrIp: "0.0.0.0/0"
+        - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
           FromPort: 80
           ToPort: 80
           IpProtocol: tcp
@@ -154,7 +175,7 @@ Resources:
       Conditions:
         - Field: host-header
           Values:
-            - !Join ['', [!Ref 'AWS::StackName', ., !Ref 'HostedZoneName']]
+            - !Join ['', [!Ref 'AWS::StackName', ., !Ref 'PlatformDomainName']]
       Actions:
         - TargetGroupArn: !Ref TargetGroup
           Type: forward
@@ -162,18 +183,48 @@ Resources:
   ServiceDNSRecord:
     Type: AWS::Route53::RecordSet
     Properties:
-      HostedZoneName: !Join ['', [!Ref 'HostedZoneName', .]]
+      HostedZoneName: !Join ['', [!Ref 'PlatformDomainName', .]]
       Comment: !Sub 'DNS Record for ${AWS::StackName}'
-      Name: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'HostedZoneName']]
+      Name: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'PlatformDomainName']]
       Type: A
       AliasTarget:
         HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
         DNSName: !GetAtt LoadBalancer.DNSName
+  
+  ServiceDiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      DnsConfig: 
+        NamespaceId: !Ref PlatformNamespaceId
+        DnsRecords:
+        - Type: SRV
+          TTL: !Ref ServiceDiscoveryTTL
+      HealthCheckCustomConfig: 
+        FailureThreshold: 1
+      Name: 
+        Ref: AWS::StackName
+
+  # IAM Role that the container tasks assume to gain access to AWS Services such as S3 etc.
 
   ApplicationContainerRole:
     Type: "AWS::IAM::Role"
     Properties:
       RoleName: !Sub 'platform-role-${AWS::StackName}'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      AssumeRolePolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+  
+  # Execution role for EC2 to assume to pull images and write to CloudWatch Logs
+  ApplicationExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: !Sub 'platform-execution-role-${AWS::StackName}'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
       AssumeRolePolicyDocument:
@@ -200,13 +251,9 @@ Resources:
   LoadBalancerSecurityGroup:
     Type: "AWS::EC2::SecurityGroup"
     Properties:
-      GroupName: !Sub 'LoadBalancerSecurityGroup-${AWS::StackName}'
-      GroupDescription: !Sub 'LoadBalancer Security Group (${AWS::StackName})'
+      GroupName: !Sub 'alb-sg-${AWS::StackName}'
+      GroupDescription: !Sub '(${AWS::StackName}) Application Load Balancer Security Group'
       SecurityGroupIngress:
-        - CidrIp: "0.0.0.0/0"
-          FromPort: 80
-          ToPort: 80
-          IpProtocol: tcp
         - CidrIp: "0.0.0.0/0"
           FromPort: 443
           ToPort: 443
@@ -216,15 +263,34 @@ Resources:
   LoadBalancerListener:
     Type: "AWS::ElasticLoadBalancingV2::Listener"
     Properties:
-      LoadBalancerArn:
-        Ref: LoadBalancer
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref PlatformCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  LoadBalancerHttpRedirectListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - TargetGroupArn:
-            Ref: TargetGroup
-          Type: forward
+        - Type: redirect
+          RedirectConfig:
+            Host: "#{host}"
+            Path: "/#{path}"
+            Port: '443'
+            Protocol: "HTTPS"
+            Query: "#{query}"
+            StatusCode: HTTP_301
 
 Outputs:
   Endpoint:
-    Value: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'HostedZoneName']]
+    Value: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'PlatformDomainName']]
+
+  ServiceRole:
+    Value: !GetAtt ApplicationContainerRole.Arn
