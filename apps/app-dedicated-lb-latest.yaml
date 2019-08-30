@@ -15,22 +15,22 @@ Parameters:
   PlatformVPC:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform VPC
-    Default: /gureume/platform/vpc
+    Default: /gurum/platform/vpc
 
   PlatformPublicSubnets:
     Type: AWS::SSM::Parameter::Value<List<String>>
     Description: Platform Public Subnets
-    Default: /gureume/platform/subnets/public
+    Default: /gurum/platform/subnets/public
 
   PlatformPrivateSubnets:
     Type: AWS::SSM::Parameter::Value<List<String>>
     Description: Platform Private Subnets
-    Default: /gureume/platform/subnets/private
+    Default: /gurum/platform/subnets/private
 
   PlatformCluster:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform ECS Cluster
-    Default: /gureume/platform/ecs
+    Default: /gurum/platform/ecs
 
   DesiredCount:
     Description: How many instances of this task should we run across our cluster?
