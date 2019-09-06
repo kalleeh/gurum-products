@@ -38,7 +38,7 @@ Parameters:
   PlatformCluster:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform ECS Cluster
-    Default: /gureume/platform/ecs
+    Default: /gurum/platform/ecs
 
 Conditions:
   DevStageExist: !Not [!Equals ["", !Ref ServiceDev ]]
@@ -154,6 +154,11 @@ Resources:
               commands:
                 - docker push "$IMAGE_URI"
                 - printf '[{"name":"web","imageUri":"%s"}]' "$IMAGE_URI" > images.json
+          cache:
+            paths:
+              - '/root/.m2/**/*'
+              - '/root/.npm/**/*'
+              - 'build/**/*'
           artifacts:
             files: images.json
       Environment:
