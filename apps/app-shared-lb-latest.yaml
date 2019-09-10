@@ -41,47 +41,47 @@ Parameters:
   PlatformDomainName:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Name of the Hosted Zone to register service with
-    Default: /gureume/platform/domain-name
+    Default: /gurum/platform/domain-name
 
   PlatformVPC:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform VPC
-    Default: /gureume/platform/vpc
+    Default: /gurum/platform/vpc
 
   PlatformPrivateSubnets:
     Type: AWS::SSM::Parameter::Value<List<String>>
     Description: Platform Private Subnets
-    Default: /gureume/platform/subnets/private
+    Default: /gurum/platform/subnets/private
 
   PlatformCluster:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform ECS Cluster
-    Default: /gureume/platform/ecs
+    Default: /gurum/platform/ecs
 
   PlatformLoadBalancerDnsName:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Load Balancer DNS Name
-    Default: /gureume/platform/loadbalancer/dns-name
+    Default: /gurum/platform/loadbalancer/dns-name
 
   PlatformLoadBalancerHostedZoneId:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Load Balancer Hosted Zone ID
-    Default: /gureume/platform/loadbalancer/hosted-zone-id
+    Default: /gurum/platform/loadbalancer/hosted-zone-id
 
   PlatformLoadBalancerListener:
     Type: AWS::SSM::Parameter::Value<String>
     Description: The Application Load Balancer listener to register with
-    Default: /gureume/platform/loadbalancer/listener-arn
+    Default: /gurum/platform/loadbalancer/listener-arn
 
   PlatformLoadBalancerSecurityGroup:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Load Balancer Security Group
-    Default: /gureume/platform/loadbalancer/security-group
+    Default: /gurum/platform/loadbalancer/security-group
 
   PlatformNamespaceId:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform Namespace ID
-    Default: /gureume/platform/service-discovery/namespace-id
+    Default: /gurum/platform/service-discovery/namespace-id
 
 Resources:
 

@@ -38,7 +38,7 @@ Parameters:
   PlatformCluster:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform ECS Cluster
-    Default: /gureume/platform/ecs
+    Default: /gurum/platform/ecs
 
 Conditions:
   DevStageExist: !Not [!Equals ["", !Ref ServiceDev ]]
