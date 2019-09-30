@@ -136,11 +136,19 @@ Resources:
     Properties:
       Artifacts:
         Type: CODEPIPELINE
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_DOCKER_LAYER_CACHE
+          - LOCAL_CUSTOM_CACHE
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
           version: 0.2
           phases:
+            install:
+              runtime-versions:
+                docker: 18
             pre_build:
               commands:
                 - $(aws ecr get-login --no-include-email)
@@ -154,11 +162,17 @@ Resources:
               commands:
                 - docker push "$IMAGE_URI"
                 - printf '[{"name":"web","imageUri":"%s"}]' "$IMAGE_URI" > images.json
+          cache:
+            paths:
+              - '/root/.m2/**/*'
+              - '/root/.npm/**/*'
+              - 'build/**/*'
           artifacts:
             files: images.json
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/docker:17.09.0
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:1.0
+        PrivilegedMode: True
         Type: LINUX_CONTAINER
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
