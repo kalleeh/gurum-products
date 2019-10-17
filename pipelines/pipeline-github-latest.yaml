@@ -295,7 +295,6 @@ Resources:
       Authentication: GITHUB_HMAC
       TargetPipeline: !Ref Pipeline
       TargetAction: Source
-      Name: MyWebhook
       TargetPipelineVersion: !GetAtt Pipeline.Version
       RegisterWithThirdParty: true
 
