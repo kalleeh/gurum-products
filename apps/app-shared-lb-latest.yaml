@@ -129,7 +129,7 @@ Resources:
         - Name: web
           Essential: true
           Image: !Ref DockerImage
-          Memory: 1024
+          Memory: 2048
           PortMappings:
             - ContainerPort: 80
           LogConfiguration:

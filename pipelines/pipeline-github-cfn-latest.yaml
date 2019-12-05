@@ -1,0 +1,387 @@
+# This is a sample, non-production-ready template.
+#
+# © 2019 Amazon Web Services, In​c. or its affiliates. All Rights Reserved.
+#
+# This AWS Content is provided subject to the terms of the
+# AWS Customer Agreement available at http://aws.amazon.com/agreement
+# or other written agreement between Customer and either
+# Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Pipeline for deployment apps
+
+Parameters:
+  GitHubRepo:
+    Type: String
+
+  GitHubBranch:
+    Type: String
+
+  GitHubToken:
+    Type: String
+    NoEcho: true
+
+  GitHubUser:
+    Type: String
+
+  ServiceDev:
+    Type: String
+    Default: ""
+
+  ServiceTest:
+    Type: String
+    Default: ""
+
+  ServiceProd:
+    Type: String
+
+  # Platform Parameters - Resolved from SSM.
+  ProductsBucket:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: S3 Bucket holding the Gurum Products.
+    Default: /gurum/products/bucket
+
+  DeploymentRoleArn:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: IAM ARN to the Deployment Role.
+    Default: /gurum/api/deployment-role-arn
+
+Conditions:
+  DevStageExist: !Not [!Equals ["", !Ref ServiceDev ]]
+  TestStageExist: !Not [!Equals ["", !Ref ServiceTest ]]
+  AddApproval: !Or [ !Condition DevStageExist, !Condition TestStageExist ]
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: !Sub arn:aws:s3:::${ProductsBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Repository}
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - cloudformation:Describe*
+                  - cloudFormation:List*
+                  - iam:PassRole
+              - Resource:
+                  - !Sub arn:aws:cloudformation:eu-west-1:${AWS::AccountId}:stack/${AWS::StackName}*
+                Effect: Allow
+                Action:
+                  - cloudformation:Create*
+                  - cloudFormation:Update*
+                  - cloudFormation:Delete*
+
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                docker: 18
+            pre_build:
+              commands:
+                - $(aws ecr get-login --no-include-email)
+                - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
+                - IMAGE_URI="${REPOSITORY_URI}:${TAG}"
+                - docker pull $IMAGE_URI || true
+            build:
+              commands:
+                - docker build --cache-from $IMAGE_URI --tag "$IMAGE_URI" .
+            post_build:
+              commands:
+                - docker push "$IMAGE_URI"
+                - printf '{"name":"web","imageUri":"%s"}' "$IMAGE_URI" > images.json
+          artifacts:
+            files: images.json
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: REPOSITORY_URI
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+      Name: !Ref AWS::StackName
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+
+  GenerateTemplateProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                docker: 18
+            pre_build:
+              commands:
+                - TYPE=$(grep -A3 'type:' gurum.yaml | head -n1 | awk '{ print $2}')
+                - echo "Found type $TYPE"
+            build:
+              commands:
+                - echo "Running aws s3 cp s3://$PRODUCTS_BUCKET/apps/app-$TYPE-latest.yaml template.yaml"
+                - aws s3 cp s3://$PRODUCTS_BUCKET/apps/app-$TYPE-latest.yaml template.yaml
+            post_build:
+              commands:
+          artifacts:
+            files: template.yaml
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: PRODUCTS_BUCKET
+            Value: !Ref ProductsBucket
+      Name: !Sub ${AWS::StackName}-GenerateTemplate
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+  
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: "1"
+                Provider: GitHub
+              Configuration:
+                Owner: !Ref GitHubUser
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+              OutputArtifacts:
+                - Name: App
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: ContainerBuild
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+            - Name: GenerateTemplate
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: "1"
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref GenerateTemplateProject
+              InputArtifacts:
+                - Name: App
+              OutputArtifacts:
+                - Name: TemplateOutput
+              RunOrder: 1
+        - !If
+          - DevStageExist
+          - Name: Development
+            Actions:
+              - Name: DeployDev
+                ActionTypeId:
+                  Category: Deploy
+                  Owner: AWS
+                  Provider: CloudFormation
+                  Version: '1'
+                Configuration:
+                  ActionMode: REPLACE_ON_FAILURE
+                  Capabilities: CAPABILITY_NAMED_IAM
+                  ParameterOverrides: |
+                    {
+                      "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                    }
+                  StackName: !Ref ServiceDev
+                  TemplatePath: 'TemplateOutput::template.yaml'
+                  RoleArn: !Ref DeploymentRoleArn
+                InputArtifacts:
+                  - Name: BuildOutput
+                  - Name: TemplateOutput
+                RunOrder: 1
+          - !Ref AWS::NoValue
+        - !If
+          - TestStageExist
+          - Name: Test
+            Actions:
+              - Name: DeployTest
+                ActionTypeId:
+                  Category: Deploy
+                  Owner: AWS
+                  Provider: CloudFormation
+                  Version: '1'
+                Configuration:
+                  ActionMode: REPLACE_ON_FAILURE
+                  Capabilities: CAPABILITY_NAMED_IAM
+                  ParameterOverrides: |
+                    {
+                      "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                    }
+                  StackName: !Ref ServiceTest
+                  TemplatePath: 'TemplateOutput::template.yaml'
+                  RoleArn: !Ref DeploymentRoleArn
+                InputArtifacts:
+                  - Name: BuildOutput
+                  - Name: TemplateOutput
+                RunOrder: 1
+          - !Ref AWS::NoValue
+        - !If
+          - AddApproval
+          - Name: ApprovalStage
+            Actions:
+              - Name: Approval
+                ActionTypeId:
+                    Category: Approval
+                    Owner: AWS
+                    Version: "1"
+                    Provider: Manual
+          - !Ref AWS::NoValue
+        - Name: Production
+          Actions:
+            - Name: DeployProd
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                Capabilities: CAPABILITY_NAMED_IAM
+                ParameterOverrides: |
+                  {
+                    "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                  }
+                StackName: !Ref ServiceProd
+                TemplatePath: 'TemplateOutput::template.yaml'
+                RoleArn: !Ref DeploymentRoleArn
+              InputArtifacts:
+                - Name: BuildOutput
+                - Name: TemplateOutput
+              RunOrder: 1
+
+  Webhook:
+    Type: 'AWS::CodePipeline::Webhook'
+    Properties:
+      AuthenticationConfiguration:
+        SecretToken: secret
+      Filters:
+      - JsonPath: "$.ref"
+        MatchEquals: refs/heads/{Branch}
+      Authentication: GITHUB_HMAC
+      TargetPipeline: !Ref Pipeline
+      TargetAction: Source
+      TargetPipelineVersion: !GetAtt Pipeline.Version
+      RegisterWithThirdParty: true
+
+Outputs:
+  PipelineName:
+    Value: !Sub ${Pipeline}
+
+  ServiceDev:
+    Value: !Ref ServiceDev
+
+  ServiceTest:
+    Value: !Ref ServiceTest
+
+  ServiceProd:
+    Value: !Ref ServiceProd
