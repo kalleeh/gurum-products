@@ -1,0 +1,155 @@
+# This is a sample, non-production-ready template.
+#
+# © 2019 Amazon Web Services, In​c. or its affiliates. All Rights Reserved.
+#
+# This AWS Content is provided subject to the terms of the
+# AWS Customer Agreement available at http://aws.amazon.com/agreement
+# or other written agreement between Customer and either
+# Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation IAM Role for Pipeline Deployment
+
+Parameters:
+
+  DeploymentAccountId:
+    Type: String
+    Description: 12-digit AWS Account number to the Deployment account
+
+  KMSArn:
+    Type: String
+    Description: ARN of the KMS CMK created in the Deployment account
+
+Resources:
+
+  CloudFormationDelegationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "cloudformation-delegation-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Ref DeploymentAccountId
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  CloudFormationDelegationPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "cloudformation-delegation-policy"
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - cloudformation:*
+              - s3:Get*
+              - s3:List*
+              - s3:Put*
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - iam:GetRole
+              - iam:PassRole
+            Resource: !GetAtt CloudFormationDeploymentRole.Arn
+          - Effect: Allow
+            Sid: "KMS"
+            Action:
+              - "kms:Decrypt"
+              - "kms:DescribeKey"
+              - "kms:Encrypt"
+              - "kms:GenerateDataKey*"
+              - "kms:ReEncrypt*"
+            Resource: !Ref KMSArn
+      Roles:
+        - !Ref CloudFormationDelegationRole
+
+  CloudFormationDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "cloudformation-deployment-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Sid: "AssumeRole"
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+
+  CloudFormationDeploymentPolicy:
+    # This is the role that will be used to deploy CloudFormation resources from
+    # within the account that it is deployed to. You should scope this policy depending
+    # On what you would like to deploy within certain Organizational Units.
+    # NOTE: below is a default IAM policy and these should be changed to suit your needs.
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "cloudformation-deployment-policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Sid: "CloudFormation"
+            Action:
+              - "apigateway:*"
+              - "application-autoscaling:*"
+              - "autoscaling:*"
+              - "cloudformation:*"
+              - "cloudtrail:*"
+              - "cloudwatch:*"
+              - "codebuild:*"
+              - "codecommit:*"
+              - "codedeploy:*"
+              - "codepipeline:*"
+              - "cognito-identity:*"
+              - "cognito-idp:*"
+              - "config:*"
+              - "dax:*"
+              - "dynamodb:*"
+              - "ec2:*"
+              - "ecr:*"
+              - "ecs:*"
+              - "elasticbeanstalk:*"
+              - "elasticloadbalancing:*"
+              - "es:*"
+              - "events:*"
+              - "kinesis:*"
+              - "lambda:*"
+              - "logs:*"
+              - "route53:*"
+              - "s3:*"
+              - "sns:*"
+              - "sqs:*"
+              - "ssm:GetParameter"
+              - "ssm:GetParameters"
+              - "states:*"
+              - "tag:*"
+              - "xray:*"
+            Resource: "*"
+          - Effect: Allow
+            Sid: "KMS"
+            Action:
+              - "kms:Decrypt"
+              - "kms:DescribeKey"
+              - "kms:Encrypt"
+              - "kms:GenerateDataKey*"
+              - "kms:ReEncrypt*"
+            Resource: !Ref KMSArn
+      Roles:
+        - !Ref CloudFormationDeploymentRole
+
+Outputs:
+
+  CloudFormationDelegationRoleArn:
+    Value: !GetAtt CloudFormationDelegationRole.Arn
+
+  CloudFormationDeploymentRoleArn:
+    Value: !GetAtt CloudFormationDeploymentRole.Arn
