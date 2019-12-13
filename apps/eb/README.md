@@ -19,7 +19,7 @@ Elastic BeanStalk Application.
 Name           | Description     | Default         | Accepted Values
 -------------- | --------------- | --------------- | ---------------
 GurumApplicationName|Name of the Elastic BeanStalk application.|MyApp|String
-SolutionStackName|The Elastic BeanStalk platform to run on.|64bit Amazon Linux 2018.03 v3.3.0 running Tomcat 8.5 Java 8|[https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html](Full List in Documentation)
+SolutionStackName|The Elastic BeanStalk platform to run on.|64bit Amazon Linux 2018.03 v3.3.0 running Tomcat 8.5 Java 8|[https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html](Documentation)
 MinSize|Min number of instances to scale to.|2|Int
 MaxSize|Max number of instances to scale to.|6|Int
 

@@ -39,11 +39,6 @@ Parameters:
     Default: 6
 
   # Platform Parameters - Resolved from SSM.
-  PlatformDomainName:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: Name of the Hosted Zone to register service with
-    Default: /gurum/platform/domain-name
-
   PlatformVPC:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform VPC
@@ -58,11 +53,6 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<List<String>>
     Description: Platform Private Subnets
     Default: /gurum/platform/subnets/public
-
-  PlatformNamespaceId:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: Platform Namespace ID
-    Default: /gurum/platform/service-discovery/namespace-id
 
 Resources:
 
