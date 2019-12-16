@@ -206,8 +206,8 @@ Resources:
                 - echo "Found type $TYPE"
             build:
               commands:
-                - echo "Running aws s3 cp s3://$PRODUCTS_BUCKET/apps/app-$TYPE-latest.yaml template.yaml"
-                - aws s3 cp s3://$PRODUCTS_BUCKET/apps/app-$TYPE-latest.yaml template.yaml
+                - echo "Running aws s3 cp s3://$PRODUCTS_BUCKET/apps/$TYPE/latest.yaml template.yaml"
+                - aws s3 cp s3://$PRODUCTS_BUCKET/apps/$TYPE/latest.yaml template.yaml
             post_build:
               commands:
           artifacts:
