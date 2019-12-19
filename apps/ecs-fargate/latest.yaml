@@ -31,6 +31,7 @@ Parameters:
   DockerImage:
     Description: Docker image to start the container with
     Type: String
+    Default: nginx:latest
 
   ServiceDiscoveryTTL:
     Type: String
