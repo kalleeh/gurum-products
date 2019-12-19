@@ -54,7 +54,7 @@ Conditions:
 Resources:
   Repository:
     Type: AWS::ECR::Repository
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -141,10 +141,9 @@ Resources:
                   - cloudFormation:Update*
                   - cloudFormation:Delete*
 
-
   ArtifactBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
