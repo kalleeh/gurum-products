@@ -24,31 +24,65 @@ Parameters:
   GitHubUser:
     Type: String
 
-  ServiceDev:
+  ServiceName:
     Type: String
+    Description: Name of your service, this will also become the Stack Name in each account.
+
+  DeploymentRoleName:
+    Type: String
+    Description: IAM Role Name for the deployment role CodePipeline assumes to exceute the CloudFormation Template.
+    Default: cloudformation-deployment-role
+
+  DelegationRoleName:
+    Type: String
+    Description: IAM Role Name for CodePipeline to delegate execution of the CloudFormation Template.
+    Default: cloudformation-delegation-role
+
+  DevAccountId:
+    Type: String
+    Description: (Optional) 12-digit AWS Account ID
     Default: ""
 
-  ServiceTest:
+  TestAccountId:
     Type: String
+    Description: (Optional) 12-digit AWS Account ID
     Default: ""
 
-  ServiceProd:
+  ProdAccountId:
     Type: String
-
-  PlatformCluster:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: Platform ECS Cluster
-    Default: /gurum/platform/ecs
+    Description: 12-digit AWS Account ID
 
 Conditions:
-  DevStageExist: !Not [!Equals ["", !Ref ServiceDev ]]
-  TestStageExist: !Not [!Equals ["", !Ref ServiceTest ]]
+  DevStageExist: !Not [!Equals ["", !Ref DevAccountId ]]
+  TestStageExist: !Not [!Equals ["", !Ref TestAccountId ]]
   AddApproval: !Or [ !Condition DevStageExist, !Condition TestStageExist ]
 
 Resources:
   Repository:
     Type: AWS::ECR::Repository
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      RepositoryPolicyText: 
+        Version: "2012-10-17"
+        Statement: 
+          - 
+            Sid: AllowPushPull
+            Effect: Allow
+            Principal: 
+              AWS: 
+                - !If
+                  - DevStageExist
+                  - !Sub arn:aws:iam::${DevAccountId}:root
+                  - !Ref AWS::NoValue
+                - !If
+                  - TestStageExist
+                  - !Sub arn:aws:iam::${TestAccountId}:root
+                  - !Ref AWS::NoValue
+                - !Sub arn:aws:iam::${ProdAccountId}:root
+            Action: 
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+              - ecr:BatchGetImage
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -66,6 +100,21 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+              - Resource: !GetAtt KMSKey.Arn
+                Effect: Allow
+                Sid: "KMS"
+                Action:
+                  - "kms:Decrypt"
+                  - "kms:DescribeKey"
+                  - "kms:Encrypt"
+                  - "kms:GenerateDataKey*"
+                  - "kms:ReEncrypt*"
               - Resource: "*"
                 Effect: Allow
                 Action:
@@ -73,12 +122,6 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - ecr:GetAuthorizationToken
-              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
-                Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:GetObjectVersion
               - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Repository}
                 Effect: Allow
                 Action:
@@ -106,41 +149,55 @@ Resources:
           PolicyDocument:
             Version: 2012-10-17
             Statement:
-              - Resource:
-                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+              - Resource: !Sub arn:aws:s3:::${ArtifactBucket}/*
                 Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:GetObject
                   - s3:GetObjectVersion
                   - s3:GetBucketVersioning
+              - Resource: !GetAtt KMSKey.Arn
+                Effect: Allow
+                Sid: "KMS"
+                Action:
+                  - "kms:Decrypt"
+                  - "kms:DescribeKey"
+                  - "kms:Encrypt"
+                  - "kms:GenerateDataKey*"
+                  - "kms:ReEncrypt*"
               - Resource: "*"
                 Effect: Allow
                 Action:
-                  - ecs:DescribeServices
-                  - ecs:DescribeTaskDefinition
-                  - ecs:DescribeTasks
-                  - ecs:ListTasks
-                  - ecs:RegisterTaskDefinition
-                  - ecs:UpdateService
-                  - codebuild:StartBuild
+                  - codepipeline:*
+                  - codecommit:List*
+                  - codecommit:Get*
+                  - codecommit:GitPull
+                  - codecommit:UploadArchive
+                  - codecommit:CancelUploadArchive
                   - codebuild:BatchGetBuilds
-                  - iam:PassRole
-
-  ArtifactBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
+                  - codebuild:StartBuild
+                  - cloudformation:Describe*
+                  - cloudFormation:List*
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
+              - Resource:
+                  - !If
+                    - DevStageExist
+                    - !Sub arn:aws:iam::${DevAccountId}:role/${DelegationRoleName}
+                    - !Ref AWS::NoValue
+                  - !If
+                    - TestStageExist
+                    - !Sub arn:aws:iam::${TestAccountId}:role/${DelegationRoleName}
+                    - !Ref AWS::NoValue
+                  - !Sub arn:aws:iam::${ProdAccountId}:role/${DelegationRoleName}
+                Effect: Allow
+                Action: sts:AssumeRole
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
       Artifacts:
         Type: CODEPIPELINE
-      Cache:
-        Type: LOCAL
-        Modes:
-          - LOCAL_DOCKER_LAYER_CACHE
-          - LOCAL_CUSTOM_CACHE
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -161,25 +218,23 @@ Resources:
             post_build:
               commands:
                 - docker push "$IMAGE_URI"
-                - printf '[{"name":"web","imageUri":"%s"}]' "$IMAGE_URI" > images.json
-          cache:
-            paths:
-              - '/root/.m2/**/*'
-              - '/root/.npm/**/*'
-              - 'build/**/*'
+                - printf '{"name":"web","imageUri":"%s"}' "$IMAGE_URI" > images.json
           artifacts:
-            files: images.json
+            files:
+              - images.json
+              - template.yaml
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:1.0
-        PrivilegedMode: True
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:2.0
         Type: LINUX_CONTAINER
+        PrivilegedMode: true
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
             Value: !Ref AWS::Region
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
       Name: !Ref AWS::StackName
+      EncryptionKey: !GetAtt KMSKey.Arn
       ServiceRole: !GetAtt CodeBuildServiceRole.Arn
 
   Pipeline:
@@ -189,6 +244,9 @@ Resources:
       ArtifactStore:
         Type: S3
         Location: !Ref ArtifactBucket
+        EncryptionKey:
+          Id: !Ref KMSKey
+          Type: KMS
       Stages:
         - Name: Source
           Actions:
@@ -229,15 +287,22 @@ Resources:
                 ActionTypeId:
                   Category: Deploy
                   Owner: AWS
-                  Version: "1"
-                  Provider: ECS
+                  Provider: CloudFormation
+                  Version: '1'
                 Configuration:
-                  ClusterName: !Ref PlatformCluster
-                  ServiceName: !Ref ServiceDev
-                  FileName: images.json
+                  ActionMode: REPLACE_ON_FAILURE
+                  Capabilities: CAPABILITY_NAMED_IAM
+                  ParameterOverrides: |
+                    {
+                      "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                    }
+                  StackName: !Ref ServiceName
+                  RoleArn: !Sub 'arn:aws:iam::${DevAccountId}:role/${DeploymentRoleName}'
+                  TemplatePath: 'BuildOutput::template.yaml'
                 InputArtifacts:
                   - Name: BuildOutput
                 RunOrder: 1
+                RoleArn: !Sub 'arn:aws:iam::${DevAccountId}:role/${DelegationRoleName}'
           - !Ref AWS::NoValue
         - !If
           - TestStageExist
@@ -247,15 +312,22 @@ Resources:
                 ActionTypeId:
                   Category: Deploy
                   Owner: AWS
-                  Version: "1"
-                  Provider: ECS
+                  Provider: CloudFormation
+                  Version: '1'
                 Configuration:
-                  ClusterName: !Ref PlatformCluster
-                  ServiceName: !Ref ServiceTest
-                  FileName: images.json
+                  ActionMode: REPLACE_ON_FAILURE
+                  Capabilities: CAPABILITY_NAMED_IAM
+                  ParameterOverrides: |
+                    {
+                      "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                    }
+                  StackName: !Ref ServiceName
+                  RoleArn: !Sub 'arn:aws:iam::${TestAccountId}:role/${DeploymentRoleName}'
+                  TemplatePath: 'BuildOutput::template.yaml'
                 InputArtifacts:
                   - Name: BuildOutput
                 RunOrder: 1
+                RoleArn: !Sub 'arn:aws:iam::${TestAccountId}:role/${DelegationRoleName}'
           - !Ref AWS::NoValue
         - !If
           - AddApproval
@@ -274,15 +346,22 @@ Resources:
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
-                Version: "1"
-                Provider: ECS
+                Provider: CloudFormation
+                Version: '1'
               Configuration:
-                ClusterName: !Ref PlatformCluster
-                ServiceName: !Ref ServiceProd
-                FileName: images.json
+                ActionMode: REPLACE_ON_FAILURE
+                Capabilities: CAPABILITY_NAMED_IAM
+                ParameterOverrides: |
+                  {
+                    "DockerImage" : { "Fn::GetParam" : ["BuildOutput","images.json","imageUri"] }
+                  }
+                StackName: !Ref ServiceName
+                RoleArn: !Sub 'arn:aws:iam::${ProdAccountId}:role/${DeploymentRoleName}'
+                TemplatePath: 'BuildOutput::template.yaml'
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
+              RoleArn: !Sub 'arn:aws:iam::${ProdAccountId}:role/${DelegationRoleName}'
 
   Webhook:
     Type: 'AWS::CodePipeline::Webhook'
@@ -299,14 +378,6 @@ Resources:
       RegisterWithThirdParty: true
 
 Outputs:
+
   PipelineName:
     Value: !Sub ${Pipeline}
-
-  ServiceDev:
-    Value: !Ref ServiceDev
-
-  ServiceTest:
-    Value: !Ref ServiceTest
-
-  ServiceProd:
-    Value: !Ref ServiceProd

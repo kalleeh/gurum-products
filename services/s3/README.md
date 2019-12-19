@@ -140,21 +140,9 @@ spec:
 #### Complete
 
 ```yaml
-apiVersion: servicecatalog.k8s.io/v1beta1
-kind: ServiceInstance
-metadata:
-  name: s3-custom-complete-example
-spec:
-  clusterServiceClassExternalName: s3
-  clusterServicePlanExternalName: custom
-  parameters:
-    BucketName: Auto # OPTIONAL
-    LoggingPrefix: Archive # OPTIONAL
-    EnableLogging: True # OPTIONAL
-    EnableGlacierLifeCycle: False # OPTIONAL
-    GlacierLifeCycleTransitionInDays: 0 # OPTIONAL
-    EnableVersioning: False # OPTIONAL
-    LifeCyclePrefix: Archive # OPTIONAL
-    BucketAccessControl: Private # OPTIONAL
-    PreventDeletion: True # OPTIONAL
+import boto3
+
+s3 = boto3.client('s3')
+
+s3.get_object('mybucketName', 'myobject')
 ```

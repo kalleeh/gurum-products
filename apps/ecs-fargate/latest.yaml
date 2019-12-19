@@ -31,6 +31,7 @@ Parameters:
   DockerImage:
     Description: Docker image to start the container with
     Type: String
+    Default: nginx:latest
 
   ServiceDiscoveryTTL:
     Type: String
@@ -129,7 +130,7 @@ Resources:
         - Name: web
           Essential: true
           Image: !Ref DockerImage
-          Memory: 1024
+          Memory: 2048
           PortMappings:
             - ContainerPort: 80
           LogConfiguration:
