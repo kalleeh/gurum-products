@@ -55,6 +55,7 @@ Resources:
   Repository:
     Type: AWS::ECR::Repository
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
 
   CodeBuildServiceRole:
     Type: AWS::IAM::Role
@@ -144,6 +145,7 @@ Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project

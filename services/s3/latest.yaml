@@ -53,7 +53,7 @@ Parameters:
     AllowedValues:
       - 'True'
       - 'False'
-    Default: 'True'
+    Default: 'False'
   EnableGlacierLifeCycle:
     Description: enable archiving to Glacier Storage
     Type: String
@@ -97,7 +97,7 @@ Parameters:
     AllowedValues:
       - 'True'
       - 'False'
-    Default: "True"
+    Default: "False"
 Conditions:
   UseLogging: !Equals
     - !Ref EnableLogging
@@ -142,6 +142,7 @@ Resources:
         - Status: Enabled
         - !Ref 'AWS::NoValue'
     DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Condition: RetainBucket
   S3BucketDelete:
     Type: 'AWS::S3::Bucket'
@@ -171,7 +172,7 @@ Resources:
   LoggingBucket:
     Condition: UseLogging
     Type: 'AWS::S3::Bucket'
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
     Properties:
       AccessControl: LogDeliveryWrite
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Join [ "-", [ !Ref BucketName, 'logging' ] ] ]
