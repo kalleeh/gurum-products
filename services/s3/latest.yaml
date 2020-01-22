@@ -123,15 +123,17 @@ Resources:
     Properties:
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Ref BucketName ]
       AccessControl: !Ref BucketAccessControl
-      LifecycleConfiguration:
-        Rules:
-          - Id: GlacierRule
-            Prefix: !Ref LifeCyclePrefix
-            Status: Enabled
-            ExpirationInDays: 365
-            Transitions:
-              - TransitionInDays: !Ref GlacierLifeCycleTransitionInDays
-                StorageClass: Glacier
+      LifecycleConfiguration: !If
+        - UseGlacierLifeCycle
+        - Rules:
+            - Id: GlacierRule
+              Prefix: !Ref LifeCyclePrefix
+              Status: Enabled
+              ExpirationInDays: 365
+              Transitions:
+                - TransitionInDays: !Ref GlacierLifeCycleTransitionInDays
+                  StorageClass: Glacier
+        - !Ref 'AWS::NoValue'
       LoggingConfiguration: !If
         - UseLogging
         - DestinationBucketName: !Ref LoggingBucket
@@ -149,15 +151,17 @@ Resources:
     Properties:
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Ref BucketName ]
       AccessControl: !Ref BucketAccessControl
-      LifecycleConfiguration:
-        Rules:
-          - Id: GlacierRule
-            Prefix: !Ref LifeCyclePrefix
-            Status: Enabled
-            ExpirationInDays: 365
-            Transitions:
-              - TransitionInDays: !Ref GlacierLifeCycleTransitionInDays
-                StorageClass: Glacier
+      LifecycleConfiguration: !If
+        - UseGlacierLifeCycle
+        - Rules:
+            - Id: GlacierRule
+              Prefix: !Ref LifeCyclePrefix
+              Status: Enabled
+              ExpirationInDays: 365
+              Transitions:
+                - TransitionInDays: !Ref GlacierLifeCycleTransitionInDays
+                  StorageClass: Glacier
+        - !Ref 'AWS::NoValue'
       LoggingConfiguration: !If
         - UseLogging
         - DestinationBucketName: !Ref LoggingBucket
