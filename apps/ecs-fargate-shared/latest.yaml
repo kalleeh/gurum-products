@@ -8,7 +8,7 @@
 # Amazon Web Services, Inc. or Amazon Web Services EMEA SARL or both.
 
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Platform App on Dedicated Load Balancer
+Description: Platform App on Shared Load Balancer
 
 Parameters:
 
@@ -44,20 +44,10 @@ Parameters:
     Description: Name of the Hosted Zone to register service with
     Default: /gurum/platform/domain-name
 
-  PlatformDomainCertificate:
-    Type: AWS::SSM::Parameter::Value<String>
-    Description: ARN to the Platform Domain ACM Certificate.
-    Default: /gurum/platform/domain-certificate
-
   PlatformVPC:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform VPC
     Default: /gurum/platform/vpc
-
-  PlatformPublicSubnets:
-    Type: AWS::SSM::Parameter::Value<List<String>>
-    Description: Platform Private Subnets
-    Default: /gurum/platform/subnets/public
 
   PlatformPrivateSubnets:
     Type: AWS::SSM::Parameter::Value<List<String>>
@@ -68,6 +58,26 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Description: Platform ECS Cluster
     Default: /gurum/platform/ecs
+
+  PlatformLoadBalancerDnsName:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform Load Balancer DNS Name
+    Default: /gurum/platform/loadbalancer/dns-name
+
+  PlatformLoadBalancerHostedZoneId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform Load Balancer Hosted Zone ID
+    Default: /gurum/platform/loadbalancer/hosted-zone-id
+
+  PlatformLoadBalancerListener:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: The Application Load Balancer listener to register with
+    Default: /gurum/platform/loadbalancer/listener-arn
+
+  PlatformLoadBalancerSecurityGroup:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: Platform Load Balancer Security Group
+    Default: /gurum/platform/loadbalancer/security-group
 
   PlatformNamespaceId:
     Type: AWS::SSM::Parameter::Value<String>
@@ -107,7 +117,8 @@ Resources:
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      Family: !Ref AWS::StackName
+      Family:
+        Ref: AWS::StackName
       Cpu: "1024"
       Memory: "2048"
       NetworkMode: awsvpc
@@ -141,7 +152,7 @@ Resources:
       GroupName: !Sub 'app-sg-${AWS::StackName}'
       GroupDescription: !Sub '(${AWS::StackName}) Application Service Security Group'
       SecurityGroupIngress:
-        - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        - SourceSecurityGroupId: !Ref PlatformLoadBalancerSecurityGroup
           FromPort: 80
           ToPort: 80
           IpProtocol: tcp
@@ -170,7 +181,7 @@ Resources:
   ListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref LoadBalancerListener
+      ListenerArn: !Ref PlatformLoadBalancerListener
       Priority: !Ref Priority
       Conditions:
         - Field: host-header
@@ -188,8 +199,8 @@ Resources:
       Name: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'PlatformDomainName']]
       Type: A
       AliasTarget:
-        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
-        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !Ref PlatformLoadBalancerHostedZoneId
+        DNSName: !Ref PlatformLoadBalancerDnsName
   
   ServiceDiscoveryService:
     Type: AWS::ServiceDiscovery::Service
@@ -234,94 +245,7 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
 
-  # Load Balancer for the app
-  LoadBalancer:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties:
-      Name: !Sub 'app-lb-${AWS::StackName}'
-      Subnets: !Ref PlatformPublicSubnets
-      SecurityGroups:
-        - !Ref LoadBalancerSecurityGroup
-      Tags:
-        - Key: Name
-          Value: !Sub 'app-lb-${AWS::StackName}'
-
-  LoadBalancerListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 443
-      Protocol: HTTPS
-      Certificates:
-        - CertificateArn: !Ref PlatformDomainCertificate
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref TargetGroup
-
-  LoadBalancerHttpRedirectListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
-      DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Host: "#{host}"
-            Path: "/#{path}"
-            Port: '443'
-            Protocol: "HTTPS"
-            Query: "#{query}"
-            StatusCode: HTTP_301
-
-  # This security group defines who/where is allowed to access the Application Load Balancer.
-  # By default, we've opened this up to the public internet (0.0.0.0/0) but can you restrict
-  # it further if you want.
-  LoadBalancerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      VpcId: !Ref PlatformVPC
-      GroupDescription: Access to the load balancer that sits in front of ECS
-      SecurityGroupIngress:
-        # Allow access from anywhere to our ECS services
-        - CidrIp: 0.0.0.0/0
-          IpProtocol: "-1"
-      Tags:
-        - Key: Name
-          Value: !Sub 'app-lb-sg-${AWS::StackName}'
-
-  # We define a default target group here, as this is a mandatory Parameters
-  # when creating an Application Load Balancer Listener. This is not used, instead
-  # a target group is created per-service in each service template (../services/*)
-  DefaultTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      VpcId: !Ref PlatformVPC
-      Port: 443
-      Protocol: HTTPS
-
 Outputs:
-
-  LoadBalancer:
-    Description: A reference to the Application Load Balancer
-    Value: !Ref LoadBalancer
-
-  LoadBalancerListener:
-    Description: A reference to a port listener
-    Value: !Ref LoadBalancerListener
-  
-  LoadBalancerCanonicalHostedZoneID:
-    Description: A reference to a port listener
-    Value: !GetAtt LoadBalancer.CanonicalHostedZoneID
-  
-  LoadBalancerDNSName:
-    Description: A reference to a port listener
-    Value: !GetAtt LoadBalancer.DNSName
-
-  LoadBalancerSecurityGroup:
-    Description: A reference to the security group for load balancers
-    Value: !Ref LoadBalancerSecurityGroup
-
   Endpoint:
     Value: !Join ['', [!Ref 'AWS::StackName', ., !Ref 'PlatformDomainName']]
 
