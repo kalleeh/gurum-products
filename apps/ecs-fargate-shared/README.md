@@ -1,6 +1,6 @@
-# Gurum - ECS Fargate Application on Dedicated Load Balancer
+# Gurum - ECS Fargate Application on Shared Load Balancer
 
-ECS Fargate Application running on a Dedicated Load Balancer.
+ECS Fargate Application running on a Shared Load Balancer.
 [https://aws.amazon.com/documentation/codepipeline/](https://aws.amazon.com/documentation/codepipeline/)
 
 ## Table of contents
