@@ -44,7 +44,7 @@ Resources:
           - Sid: Allows admin of the key
             Effect: Allow
             Principal:
-              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
             Action: ["kms:*"]
             Resource: "*"
           - Sid: Allow use of the key from the other accounts
@@ -53,22 +53,22 @@ Resources:
               AWS:
                 - !If
                   - DevStageExist
-                  - !Sub arn:aws:iam::${DevAccountId}:role/${DeploymentRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${DevAccountId}:role/${DeploymentRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - DevStageExist
-                  - !Sub arn:aws:iam::${DevAccountId}:role/${DelegationRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${DevAccountId}:role/${DelegationRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - TestStageExist
-                  - !Sub arn:aws:iam::${TestAccountId}:role/${DeploymentRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${TestAccountId}:role/${DeploymentRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - TestStageExist
-                  - !Sub arn:aws:iam::${TestAccountId}:role/${DelegationRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${TestAccountId}:role/${DelegationRoleName}
                   - !Ref AWS::NoValue
-                - !Sub arn:aws:iam::${ProdAccountId}:role/${DeploymentRoleName}
-                - !Sub arn:aws:iam::${ProdAccountId}:role/${DelegationRoleName}
+                - !Sub arn:${AWS::Partition}:iam::${ProdAccountId}:role/${DeploymentRoleName}
+                - !Sub arn:${AWS::Partition}:iam::${ProdAccountId}:role/${DelegationRoleName}
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -111,37 +111,37 @@ Resources:
               - s3:PutReplicationConfiguration
             Effect: Allow
             Resource:
-            - !Sub arn:aws:s3:::${ArtifactBucket}
-            - !Sub arn:aws:s3:::${ArtifactBucket}/*
+            - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucket}
+            - !Sub arn:${AWS::Partition}:s3:::${ArtifactBucket}/*
             Principal:
               AWS:
                 - !If
                   - DevStageExist
-                  - !Sub arn:aws:iam::${DevAccountId}:role/${DeploymentRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${DevAccountId}:role/${DeploymentRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - DevStageExist
-                  - !Sub arn:aws:iam::${DevAccountId}:role/${DelegationRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${DevAccountId}:role/${DelegationRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - TestStageExist
-                  - !Sub arn:aws:iam::${TestAccountId}:role/${DeploymentRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${TestAccountId}:role/${DeploymentRoleName}
                   - !Ref AWS::NoValue
                 - !If
                   - TestStageExist
-                  - !Sub arn:aws:iam::${TestAccountId}:role/${DelegationRoleName}
+                  - !Sub arn:${AWS::Partition}:iam::${TestAccountId}:role/${DelegationRoleName}
                   - !Ref AWS::NoValue
-                - !Sub arn:aws:iam::${ProdAccountId}:role/${DeploymentRoleName}
-                - !Sub arn:aws:iam::${ProdAccountId}:role/${DelegationRoleName}
+                - !Sub arn:${AWS::Partition}:iam::${ProdAccountId}:role/${DeploymentRoleName}
+                - !Sub arn:${AWS::Partition}:iam::${ProdAccountId}:role/${DelegationRoleName}
 
 Outputs:
 
   ArtifactBucket:
     Value: !Ref ArtifactBucket
     Export:
-      - Name: 'CodePipelineArtifactBucket'
+      Name: 'CodePipelineArtifactBucket'
 
   KMSArn:
     Value: !GetAtt KMSKey.Arn
     Export:
-      - Name: 'CodePipelineKMSArn'
+      Name: 'CodePipelineKMSArn'
