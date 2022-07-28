@@ -123,6 +123,15 @@ Resources:
     Properties:
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Ref BucketName ]
       AccessControl: !Ref BucketAccessControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
       LifecycleConfiguration:
         Rules:
           - Id: GlacierRule
@@ -148,6 +157,15 @@ Resources:
     Properties:
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Ref BucketName ]
       AccessControl: !Ref BucketAccessControl
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
       LifecycleConfiguration:
         Rules:
           - Id: GlacierRule
@@ -174,6 +192,15 @@ Resources:
     DeletionPolicy: Retain
     Properties:
       AccessControl: LogDeliveryWrite
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
       BucketName: !If [ AutoBucketName, !Ref "AWS::NoValue", !Join [ "-", [ !Ref BucketName, 'logging' ] ] ]
   AWSSBInjectedIAMUserRole:
     Type: AWS::IAM::Role
